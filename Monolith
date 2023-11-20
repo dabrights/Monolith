@@ -1,0 +1,121 @@
+/*
+ Function: Ignite a lighter close to gas detection module. The sensor detects the gas emitted
+ and the LED on the gas sensor and red LED will light up, buzzer will be on.
+ You can see the value at A0 and D0 printed on Serial Monitor. If no gas detected - green LED will be on and buzzer off.
+*/
+//******************************************************
+const int redledPin = 11;
+const int yellowledPin = 10;//red led attached to digital pin 10
+const int greenledPin = 9;//green led attached to digital pin 9
+const int buzzerPin = 6;//aqctive piezo buzzer attached to digital pin 6
+const int analogPin=A0; //gas sensor module A0 pin attached to analog pin 0 on the Arduino board 
+const int digitalPin=7; //gas sensor module D0 pin attached to digital pin 7 on the Arduino board 
+int Analogstate=0;//variable to store analog value
+boolean  Digitalstate=0;//variable to store digital value
+int  gasvalue=map(Analogstate, 0,1023, 0, 255);  //converts readings to CO by ppm
+#include <ArduinoBLE.h>
+
+BLEService Service("00000000-5EC4-4083-81CD-A10B8D5CF6EC"); // Bluetooth® Low Energy Battery Service
+
+// Bluetooth® Low Energy Battery Level Characteristic
+BLEUnsignedIntCharacteristic LevelChar("00000001-5EC4-4083-81CD-A10B8D5CF6EC",  // standard 16-bit characteristic UUID
+    BLERead | BLENotify); // remote clients will be able to get notifications if this characteristic changes
+
+int oldGasLevel = 0;  // last battery level reading from analog input
+long previousMillis = 0;  // last time the battery level was checked, in ms
+//*******************************************************
+void setup() 
+{
+  pinMode (digitalPin,INPUT);//sets digitalPin as INPUT
+  pinMode(redledPin,OUTPUT);//sets redledPin as OUTPUT
+  pinMode(greenledPin,OUTPUT);//sets greenledPin as OUTPUT
+  pinMode(buzzerPin,OUTPUT);//sets redledPin as OUTPUT
+  Serial.begin(9600);//initialize serial communication at 9600 bps
+  while (!Serial);
+
+  pinMode(LED_BUILTIN, OUTPUT); // initialize the built-in LED pin to indicate when a central is connected
+
+
+  if (!BLE.begin()) {
+    Serial.println("starting BLE failed!");
+
+    while (1);
+  }
+
+  BLE.setLocalName("Monolith");
+  BLE.setAdvertisedService(Service); // add the service UUID
+  Service.addCharacteristic(LevelChar); // add the level characteristic
+  BLE.addService(Service); // Add the battery service
+  LevelChar.writeValue(oldGasLevel); // set initial value for this characteristic
+ // start advertising
+  BLE.advertise();
+
+  Serial.println("Bluetooth® device active, waiting for connections...");
+
+} 
+void loop()
+{  
+
+// wait for a Bluetooth® Low Energy central
+  BLEDevice central = BLE.central();
+
+   // if a central is connected to the peripheral:
+  if (central) {
+    Serial.print("Connected to central: ");
+    // print the central's BT address:
+    Serial.println(central.address());
+    // turn on the LED to indicate the connection:
+    digitalWrite(LED_BUILTIN, HIGH);
+
+      // check the battery level every 200ms
+    // while the central is connected:
+    while (central.connected()) {
+      long currentMillis = millis();
+      // if 200ms have passed, check the battery level:
+      if (currentMillis - previousMillis >= 200) {
+        previousMillis = currentMillis;
+        updateGasLevel();
+      }
+    }
+        // when the central disconnects, turn off the LED:
+    digitalWrite(LED_BUILTIN, LOW);
+    Serial.print("Disconnected from central: ");
+    Serial.println(central.address());
+  }
+
+
+
+  if( gasvalue <8) //if the value of gas sensor module A0 pin is higher then your threshold value
+  {
+   digitalWrite(redledPin,LOW);//turn off the red LED
+    digitalWrite(yellowledPin,LOW);//turn off the red LED
+    digitalWrite(buzzerPin, LOW);
+    digitalWrite(greenledPin,HIGH);//turn on the green LED
+  }
+ else if (70 > gasvalue > 7 )
+  {
+    digitalWrite(yellowledPin,HIGH);//turn on the red LED
+    digitalWrite(buzzerPin, LOW);
+    digitalWrite(greenledPin,LOW);//turn off the green LED
+    digitalWrite(redledPin,LOW);//turn off the green LED
+    
+  }
+  else if (gasvalue  > 70){
+     digitalWrite(greenledPin,LOW);//turn off the red LED
+     digitalWrite(yellowledPin,LOW);//turn off the red LED
+     digitalWrite(buzzerPin, HIGH);
+    digitalWrite(redledPin,HIGH);//turn on the green LED
+  }
+}
+
+void updateGasLevel() {
+ int gas = analogRead(A0);
+  int gasvalue = map(gas, 0, 1023, 0, 100);
+
+   if (gasvalue != oldGasLevel) {      // if the battery level has changed
+    Serial.print("CO ppm is now: "); // print it
+    Serial.println(gasvalue);
+    LevelChar.writeValue(gasvalue);  // and update the battery level characteristic
+    oldGasLevel = gasvalue;           // save the level for next comparison
+  }
+}
